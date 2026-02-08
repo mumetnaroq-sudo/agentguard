@@ -1,0 +1,47 @@
+{
+  "name": "agentguard",
+  "version": "1.0.0",
+  "description": "Security assessment and certification for AI agents",
+  "main": "src/scanner.js",
+  "bin": {
+    "agentguard": "./src/cli.js"
+  },
+  "scripts": {
+    "test": "jest",
+    "lint": "eslint src/",
+    "scan": "node src/cli.js"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "security",
+    "yara",
+    "sbom",
+    "audit",
+    "scanner",
+    "compliance"
+  ],
+  "author": "Jeremiah (Noah)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mumetnaroq/agentguard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mumetnaroq/agentguard/issues"
+  },
+  "homepage": "https://agentguard.vercel.app",
+  "dependencies": {
+    "@actions/core": "^1.10.0",
+    "@actions/github": "^6.0.0",
+    "chalk": "^4.1.2",
+    "commander": "^11.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "eslint": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "name": "agentguard",
+  "builds": [
+    {
+      "src": "web-dashboard/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/web-dashboard/$1"
+    }
+  ]
+}

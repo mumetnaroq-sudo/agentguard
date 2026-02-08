@@ -1,0 +1,28 @@
+name: 'AgentGuard Security Scan'
+description: 'Security assessment and certification for AI agents'
+author: 'Jeremiah (Noah)'
+branding:
+  icon: 'shield'
+  color: 'green'
+
+inputs:
+  path:
+    description: 'Path to scan'
+    required: false
+    default: './'
+  fail-on-critical:
+    description: 'Fail workflow if critical issues are found'
+    required: false
+    default: 'true'
+  rules-path:
+    description: 'Path to custom YARA rules directory'
+    required: false
+    default: ''
+
+outputs:
+  report:
+    description: 'Path to the generated scan report (JSON)'
+
+runs:
+  using: 'node20'
+  main: 'action/index.js'
