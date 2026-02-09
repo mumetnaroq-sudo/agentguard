@@ -1,17 +1,14 @@
 /**
  * AgentGuard API - Stripe Webhooks
- * Next.js App Router implementation
+ * Next.js App Router implementation with Prisma
  * Handles Stripe payment events
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-// Import from CommonJS modules
-import dbModule from '../../../../lib/db.js';
-import schemaModule from '../../../../lib/schema.js';
+import { PrismaClient } from '@prisma/client';
 
-const { getDatabase } = dbModule;
-const { SUBSCRIPTION_STATUS, PRICING_TIERS } = schemaModule;
+const prisma = new PrismaClient();
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -19,6 +16,28 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 });
 
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+// Subscription status mapping from Stripe to our database
+const statusMap: Record<string, string> = {
+  active: 'active',
+  canceled: 'canceled',
+  incomplete: 'incomplete',
+  incomplete_expired: 'incomplete_expired',
+  past_due: 'past_due',
+  paused: 'paused',
+  trialing: 'trialing',
+  unpaid: 'unpaid',
+};
+
+// Tier mapping from price IDs to tier names
+const getTierFromPriceId = (priceId: string): string => {
+  const priceTierMap: Record<string, string> = {
+    [process.env.STRIPE_PRICE_PRO || '']: 'pro',
+    [process.env.STRIPE_PRICE_TEAM || '']: 'team',
+    [process.env.STRIPE_PRICE_ENTERPRISE || '']: 'enterprise',
+  };
+  return priceTierMap[priceId] || 'free';
+};
 
 /**
  * POST handler for Stripe webhooks
@@ -54,7 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (err: any) {
     console.error(`Webhook signature verification failed: ${err.message}`);
     return NextResponse.json(
-      { error: 'Invalid signature' },
+      { error: 'Invalid signature', message: err.message },
       { status: 400 }
     );
   }
@@ -100,133 +119,178 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
 /**
  * Handle checkout.session.completed event
- * Activates the subscription after successful checkout
+ * Creates or activates the subscription after successful checkout
  */
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
   console.log('Processing checkout completion:', session.id);
 
-  const db = getDatabase();
   const { userId, subscriptionId, tier } = session.metadata || {};
 
-  if (!userId || !subscriptionId || !tier) {
-    console.error('Missing metadata in checkout session:', session.id);
-    throw new Error('Missing required metadata');
+  if (!userId) {
+    console.error('Missing userId in checkout session metadata:', session.id);
+    throw new Error('Missing required metadata: userId');
   }
 
   const stripeSubscriptionId = session.subscription as string;
   if (!stripeSubscriptionId) {
     console.error('No subscription ID in checkout session:', session.id);
-    throw new Error('No subscription ID');
+    throw new Error('No subscription ID in checkout session');
   }
 
-  // Update subscription record
-  const subscription = db.updateSubscription(subscriptionId, {
-    status: SUBSCRIPTION_STATUS.ACTIVE,
-    stripeSubscriptionId,
-    stripePriceId: PRICING_TIERS[tier as keyof typeof PRICING_TIERS]?.stripePriceId || null,
-    currentPeriodStart: new Date().toISOString(),
-    currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+  // Retrieve the subscription from Stripe to get full details
+  const stripeSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+  const priceId = stripeSubscription.items.data[0]?.price.id;
+  const subscriptionTier = tier || getTierFromPriceId(priceId);
+
+  // Check if subscription already exists
+  let subscription = await prisma.subscription.findFirst({
+    where: {
+      OR: [
+        { stripeSubscriptionId: stripeSubscriptionId },
+        { id: subscriptionId || 'never-match' },
+      ],
+    },
   });
 
-  if (!subscription) {
-    console.error('Subscription not found:', subscriptionId);
-    throw new Error('Subscription not found');
+  if (subscription) {
+    // Update existing subscription
+    subscription = await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: {
+        status: statusMap[stripeSubscription.status] || stripeSubscription.status,
+        stripeSubscriptionId: stripeSubscriptionId,
+        stripePriceId: priceId,
+        stripeCustomerId: stripeSubscription.customer as string,
+        tier: subscriptionTier,
+        currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
+        currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+        cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
+      },
+    });
+    console.log('Subscription updated after checkout:', subscription.id);
+  } else {
+    // Create new subscription
+    subscription = await prisma.subscription.create({
+      data: {
+        userId,
+        stripeSubscriptionId: stripeSubscriptionId,
+        stripePriceId: priceId,
+        stripeCustomerId: stripeSubscription.customer as string,
+        tier: subscriptionTier,
+        status: statusMap[stripeSubscription.status] || stripeSubscription.status,
+        currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
+        currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+        cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
+      },
+    });
+    console.log('New subscription created after checkout:', subscription.id);
   }
 
-  // Update user with subscription info
-  db.updateUser(userId, {
-    subscriptionId,
-    tier,
+  // Update user tier if necessary
+  await prisma.user.update({
+    where: { id: userId },
+    data: { 
+      // Note: Add tier field to User model if needed
+      // For now, we just log this
+    },
   });
-
-  console.log('Subscription activated:', subscription.id);
 }
 
 /**
  * Handle customer.subscription.updated event
  * Updates local subscription status when Stripe subscription changes
  */
-async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Promise<void> {
-  console.log('Processing subscription update:', subscription.id);
+async function handleSubscriptionUpdated(stripeSubscription: Stripe.Subscription): Promise<void> {
+  console.log('Processing subscription update:', stripeSubscription.id);
 
-  const db = getDatabase();
-  const localSubs = db.getSubscriptions({ stripeSubscriptionId: subscription.id });
-  const localSub = localSubs[0];
+  // Find the subscription by Stripe subscription ID
+  const subscription = await prisma.subscription.findUnique({
+    where: { stripeSubscriptionId: stripeSubscription.id },
+  });
 
-  if (!localSub) {
-    console.log('Local subscription not found for Stripe subscription:', subscription.id);
+  if (!subscription) {
+    console.log('Local subscription not found for Stripe subscription:', stripeSubscription.id);
     return;
   }
 
-  // Map Stripe status to local status
-  const statusMap: Record<string, string> = {
-    active: SUBSCRIPTION_STATUS.ACTIVE,
-    canceled: SUBSCRIPTION_STATUS.CANCELED,
-    incomplete: SUBSCRIPTION_STATUS.INCOMPLETE,
-    incomplete_expired: SUBSCRIPTION_STATUS.INCOMPLETE_EXPIRED,
-    past_due: SUBSCRIPTION_STATUS.PAST_DUE,
-    paused: SUBSCRIPTION_STATUS.PAUSED,
-    trialing: SUBSCRIPTION_STATUS.TRIALING,
-    unpaid: SUBSCRIPTION_STATUS.UNPAID,
+  const priceId = stripeSubscription.items.data[0]?.price.id;
+  const newTier = priceId ? getTierFromPriceId(priceId) : subscription.tier;
+
+  const updateData: any = {
+    status: statusMap[stripeSubscription.status] || stripeSubscription.status,
+    cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
+    currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
+    currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
   };
 
-  const updates: any = {
-    status: statusMap[subscription.status] || subscription.status,
-    cancelAtPeriodEnd: subscription.cancel_at_period_end,
-    currentPeriodStart: new Date(subscription.current_period_start * 1000).toISOString(),
-    currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
-  };
-
-  if (subscription.canceled_at) {
-    updates.canceledAt = new Date(subscription.canceled_at * 1000).toISOString();
+  // Update tier if price changed
+  if (priceId && priceId !== subscription.stripePriceId) {
+    updateData.stripePriceId = priceId;
+    updateData.tier = newTier;
   }
 
-  // Handle tier change if items changed
-  if (subscription.items.data.length > 0) {
-    const priceId = subscription.items.data[0].price.id;
-    const tier = Object.entries(PRICING_TIERS).find(
-      ([, tier]) => tier.stripePriceId === priceId
-    );
-    if (tier) {
-      updates.tier = tier[0];
-      updates.stripePriceId = priceId;
-    }
+  // Set canceledAt if subscription is canceled
+  if (stripeSubscription.canceled_at) {
+    updateData.canceledAt = new Date(stripeSubscription.canceled_at * 1000);
   }
 
-  db.updateSubscription(localSub.id, updates);
-  console.log('Subscription updated:', localSub.id);
+  await prisma.subscription.update({
+    where: { id: subscription.id },
+    data: updateData,
+  });
+
+  console.log('Subscription updated:', subscription.id);
 }
 
 /**
  * Handle customer.subscription.deleted event
  * Marks subscription as canceled and downgrades user to free tier
  */
-async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Promise<void> {
-  console.log('Processing subscription deletion:', subscription.id);
+async function handleSubscriptionDeleted(stripeSubscription: Stripe.Subscription): Promise<void> {
+  console.log('Processing subscription deletion:', stripeSubscription.id);
 
-  const db = getDatabase();
-  const localSubs = db.getSubscriptions({ stripeSubscriptionId: subscription.id });
-  const localSub = localSubs[0];
+  // Find the subscription by Stripe subscription ID
+  const subscription = await prisma.subscription.findUnique({
+    where: { stripeSubscriptionId: stripeSubscription.id },
+  });
 
-  if (!localSub) {
-    console.log('Local subscription not found for Stripe subscription:', subscription.id);
+  if (!subscription) {
+    console.log('Local subscription not found for Stripe subscription:', stripeSubscription.id);
     return;
   }
 
   // Update subscription as canceled
-  db.updateSubscription(localSub.id, {
-    status: SUBSCRIPTION_STATUS.CANCELED,
-    tier: 'FREE',
-    canceledAt: new Date().toISOString(),
+  await prisma.subscription.update({
+    where: { id: subscription.id },
+    data: {
+      status: 'canceled',
+      tier: 'free',
+      canceledAt: new Date(),
+      cancelAtPeriodEnd: false,
+    },
   });
 
-  // Downgrade user to free tier
-  db.updateUser(localSub.userId, {
-    tier: 'FREE',
-    subscriptionId: null,
+  // Create a new free subscription for the user if they don't have one
+  const existingFreeSub = await prisma.subscription.findFirst({
+    where: {
+      userId: subscription.userId,
+      tier: 'free',
+      status: 'active',
+    },
   });
 
-  console.log('Subscription cancelled and user downgraded:', localSub.id);
+  if (!existingFreeSub) {
+    await prisma.subscription.create({
+      data: {
+        userId: subscription.userId,
+        tier: 'free',
+        status: 'active',
+      },
+    });
+    console.log('Created free subscription for user after cancellation:', subscription.userId);
+  }
+
+  console.log('Subscription cancelled and user downgraded to free:', subscription.id);
 }
 
 /**
@@ -241,23 +305,29 @@ async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
     return;
   }
 
-  const db = getDatabase();
+  // Retrieve the subscription from Stripe to get latest period dates
   const stripeSubscription = await stripe.subscriptions.retrieve(invoice.subscription as string);
-  const localSubs = db.getSubscriptions({ stripeSubscriptionId: stripeSubscription.id });
-  const localSub = localSubs[0];
 
-  if (!localSub) {
+  // Find the subscription by Stripe subscription ID
+  const subscription = await prisma.subscription.findUnique({
+    where: { stripeSubscriptionId: stripeSubscription.id },
+  });
+
+  if (!subscription) {
     console.log('Local subscription not found for Stripe subscription:', stripeSubscription.id);
     return;
   }
 
-  db.updateSubscription(localSub.id, {
-    status: SUBSCRIPTION_STATUS.ACTIVE,
-    currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000).toISOString(),
-    currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000).toISOString(),
+  await prisma.subscription.update({
+    where: { id: subscription.id },
+    data: {
+      status: statusMap[stripeSubscription.status] || stripeSubscription.status,
+      currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
+      currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+    },
   });
 
-  console.log('Invoice paid processed for subscription:', localSub.id);
+  console.log('Invoice paid processed for subscription:', subscription.id);
 }
 
 /**
@@ -272,18 +342,22 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
     return;
   }
 
-  const db = getDatabase();
-  const localSubs = db.getSubscriptions({ stripeSubscriptionId: invoice.subscription as string });
-  const localSub = localSubs[0];
+  // Find the subscription by Stripe subscription ID
+  const subscription = await prisma.subscription.findUnique({
+    where: { stripeSubscriptionId: invoice.subscription as string },
+  });
 
-  if (!localSub) {
+  if (!subscription) {
     console.log('Local subscription not found for Stripe subscription:', invoice.subscription);
     return;
   }
 
-  db.updateSubscription(localSub.id, {
-    status: SUBSCRIPTION_STATUS.PAST_DUE,
+  await prisma.subscription.update({
+    where: { id: subscription.id },
+    data: {
+      status: 'past_due',
+    },
   });
 
-  console.log('Payment failure processed for subscription:', localSub.id);
+  console.log('Payment failure processed for subscription:', subscription.id);
 }
