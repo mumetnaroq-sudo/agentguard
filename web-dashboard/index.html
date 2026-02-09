@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentGuard - Billing</title>
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0f;
+      color: #fff;
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    
+    header {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+    
+    header h1 {
+      font-size: 3rem;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
+    }
+    
+    header p {
+      color: #888;
+      font-size: 1.2rem;
+    }
+    
+    .current-plan {
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+      border: 1px solid rgba(102, 126, 234, 0.3);
+      border-radius: 16px;
+      padding: 30px;
+      margin-bottom: 40px;
+    }
+    
+    .current-plan h2 {
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+    }
+    
+    .plan-badge {
+      display: inline-block;
+      padding: 8px 16px;
+      background: #667eea;
+      border-radius: 20px;
+      font-weight: 600;
+      margin-bottom: 15px;
+    }
+    
+    .usage-bar {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      height: 8px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    
+    .usage-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      border-radius: 8px;
+      transition: width 0.3s ease;
+    }
+    
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+    
+    .pricing-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 30px;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+    
+    .pricing-card:hover {
+      transform: translateY(-5px);
+      border-color: rgba(102, 126, 234, 0.5);
+    }
+    
+    .pricing-card.popular {
+      border-color: #667eea;
+      background: rgba(102, 126, 234, 0.05);
+    }
+    
+    .popular-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #667eea;
+      padding: 4px 16px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    
+    .pricing-card h3 {
+      font-size: 1.5rem;
+      margin-bottom: 10px;
+    }
+    
+    .price {
+      font-size: 3rem;
+      font-weight: 700;
+      margin: 20px 0;
+    }
+    
+    .price span {
+      font-size: 1rem;
+      color: #888;
+      font-weight: 400;
+    }
+    
+    .features {
+      list-style: none;
+      margin: 24px 0;
+    }
+    
+    .features li {
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .features li:last-child {
+      border-bottom: none;
+    }
+    
+    .features li::before {
+      content: "✓";
+      color: #4ade80;
+      font-weight: bold;
+    }
+    
+    .features li.disabled {
+      color: #666;
+    }
+    
+    .features li.disabled::before {
+      content: "×";
+      color: #ef4444;
+    }
+    
+    .btn {
+      width: 100%;
+      padding: 14px 24px;
+      border-radius: 8px;
+      border: none;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      opacity: 0.9;
+      transform: scale(1.02);
+    }
+    
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+    }
+    
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+    
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 60px;
+    }
+    
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(102, 126, 234, 0.3);
+      border-top-color: #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .alert {
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    
+    .alert-success {
+      background: rgba(74, 222, 128, 0.1);
+      border: 1px solid rgba(74, 222, 128, 0.3);
+      color: #4ade80;
+    }
+    
+    .alert-error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #ef4444;
+    }
+
+    .manage-billing {
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    .manage-billing a {
+      color: #667eea;
+      text-decoration: none;
+    }
+
+    .manage-billing a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🔒 AgentGuard</h1>
+      <p>Choose the perfect plan for your security needs</p>
+    </header>
+
+    <div id="status-message"></div>
+
+    <div id="current-plan" class="current-plan" style="display: none;">
+      <h2>Your Current Plan</h2>
+      <div id="plan-details"></div>
+    </div>
+
+    <div id="pricing-container">
+      <div class="loading">
+        <div class="spinner"></div>
+        <p>Loading pricing...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = window.location.hostname === 'localhost' 
+      ? 'http://localhost:3000/api' 
+      : '/api';
+
+    let currentTier = 'FREE';
+    let stripe = null;
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        // Initialize Stripe
+        stripe = Stripe('pk_test_placeholder'); // Replace with your Stripe publishable key
+        
+        await loadCurrentSubscription();
+        await loadPricing();
+      } catch (error) {
+        showError('Failed to initialize. Please refresh the page.');
+      }
+    });
+
+    // Load current subscription
+    async function loadCurrentSubscription() {
+      try {
+        const response = await fetch(`${API_URL}/subscriptions`, {
+          headers: {
+            'X-User-Id': getUserId()
+          }
+        });
+
+        if (!response.ok) throw new Error('Failed to load subscription');
+
+        const data = await response.json();
+        currentTier = data.subscription.tier;
+
+        // Show current plan section
+        const planSection = document.getElementById('current-plan');
+        planSection.style.display = 'block';
+
+        const planDetails = document.getElementById('plan-details');
+        const sub = data.subscription;
+        
+        let html = `
+          <div class="plan-badge">${sub.tierDetails.name}</div>
+          <p>Status: <strong>${sub.status}</strong></p>
+        `;
+
+        if (sub.tier !== 'FREE') {
+          html += `
+            <p>Renewal: ${sub.cancelAtPeriodEnd ? 'Cancels on' : 'Renews on'} ${new Date(sub.currentPeriodEnd).toLocaleDateString()}</p>
+          `;
+
+          if (sub.cancelAtPeriodEnd) {
+            html += `
+              <div class="alert alert-error">
+                Your subscription will be cancelled at the end of the billing period.
+                <button onclick="reactivateSubscription()" class="btn btn-primary" style="margin-left: 10px; width: auto;">Reactivate</button>
+              </div>
+            `;
+          }
+
+          html += `
+            <div class="manage-billing">
+              <a href="#" onclick="openCustomerPortal(); return false;">Manage billing →</a>
+            </div>
+          `;
+        }
+
+        planDetails.innerHTML = html;
+      } catch (error) {
+        console.error('Error loading subscription:', error);
+      }
+    }
+
+    // Load pricing tiers
+    async function loadPricing() {
+      try {
+        const response = await fetch(`${API_URL}/subscriptions/pricing`);
+        if (!response.ok) throw new Error('Failed to load pricing');
+
+        const data = await response.json();
+        renderPricingCards(data.tiers);
+      } catch (error) {
+        document.getElementById('pricing-container').innerHTML = `
+          <div class="alert alert-error">
+            Failed to load pricing. Please try again later.
+          </div>
+        `;
+      }
+    }
+
+    // Render pricing cards
+    function renderPricingCards(tiers) {
+      const container = document.getElementById('pricing-container');
+      
+      const html = tiers.map(tier => {
+        const isCurrent = tier.id.toUpperCase() === currentTier;
+        const isPopular = tier.id === 'pro';
+        
+        const features = [
+          { key: 'maxScansPerMonth', label: 'Scans per month', value: tier.features.maxScansPerMonth },
+          { key: 'advancedRules', label: 'Advanced security rules', value: tier.features.advancedRules },
+          { key: 'reports', label: 'Compliance reports', value: tier.features.reports },
+          { key: 'apiAccess', label: 'API access', value: tier.features.apiAccess },
+          { key: 'maxTeamMembers', label: 'Team members', value: tier.features.maxTeamMembers },
+          { key: 'prioritySupport', label: 'Priority support', value: tier.features.prioritySupport },
+          { key: 'sso', label: 'SSO integration', value: tier.features.sso },
+          { key: 'onPremise', label: 'On-premise deployment', value: tier.features.onPremise }
+        ];
+
+        const featuresHtml = features.map(f => {
+          let value;
+          if (f.value === true) value = '✓';
+          else if (f.value === false) value = '×';
+          else if (f.value === -1) value = 'Unlimited';
+          else value = f.value;
+
+          const disabled = f.value === false ? 'disabled' : '';
+          return `<li class="${disabled}">${f.label}: <strong>${value}</strong></li>`;
+        }).join('');
+
+        let button;
+        if (isCurrent) {
+          button = `<button class="btn btn-secondary" disabled>Current Plan</button>`;
+        } else if (tier.price === 0) {
+          button = `<button class="btn btn-secondary" onclick="selectFreePlan()">Continue Free</button>`;
+        } else {
+          button = `<button class="btn btn-primary" onclick="startCheckout('${tier.id.toUpperCase()}')">
+            ${currentTier !== 'FREE' ? 'Switch to ' + tier.name : 'Subscribe'}
+          </button>`;
+        }
+
+        return `
+          <div class="pricing-card ${isPopular ? 'popular' : ''}">
+            ${isPopular ? '<div class="popular-badge">Most Popular</div>' : ''}
+            <h3>${tier.name}</h3>
+            <div class="price">
+              $${tier.price}<span>/${tier.interval}</span>
+            </div>
+            <ul class="features">
+              ${featuresHtml}
+            </ul>
+            ${button}
+          </div>
+        `;
+      }).join('');
+
+      container.innerHTML = `<div class="pricing-grid">${html}</div>`;
+    }
+
+    // Start checkout
+    async function startCheckout(tier) {
+      try {
+        const response = await fetch(`${API_URL}/subscriptions/checkout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Id': getUserId()
+          },
+          body: JSON.stringify({
+            tier,
+            successUrl: window.location.href + '?success=true',
+            cancelUrl: window.location.href + '?canceled=true'
+          })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Checkout failed');
+        }
+
+        const data = await response.json();
+        
+        // Redirect to Stripe Checkout
+        window.location.href = data.url;
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    // Open customer portal
+    async function openCustomerPortal() {
+      try {
+        const response = await fetch(`${API_URL}/subscriptions/portal`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Id': getUserId()
+          },
+          body: JSON.stringify({
+            returnUrl: window.location.href
+          })
+        });
+
+        if (!response.ok) throw new Error('Failed to create portal session');
+
+        const data = await response.json();
+        window.location.href = data.url;
+      } catch (error) {
+        showError('Failed to open billing portal');
+      }
+    }
+
+    // Reactivate subscription
+    async function reactivateSubscription() {
+      try {
+        const response = await fetch(`${API_URL}/subscriptions/reactivate`, {
+          method: 'POST',
+          headers: {
+            'X-User-Id': getUserId()
+          }
+        });
+
+        if (!response.ok) throw new Error('Failed to reactivate');
+
+        showSuccess('Subscription reactivated successfully!');
+        setTimeout(() => location.reload(), 1500);
+      } catch (error) {
+        showError('Failed to reactivate subscription');
+      }
+    }
+
+    // Get user ID (in production, this would come from auth)
+    function getUserId() {
+      // Check for URL parameter or localStorage
+      const params = new URLSearchParams(window.location.search);
+      const userId = params.get('userId') || localStorage.getItem('userId');
+      
+      if (!userId) {
+        // Generate temporary user ID for demo
+        const tempId = 'user_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('userId', tempId);
+        return tempId;
+      }
+      
+      return userId;
+    }
+
+    // Show success message
+    function showSuccess(message) {
+      document.getElementById('status-message').innerHTML = `
+        <div class="alert alert-success">${message}</div>
+      `;
+    }
+
+    // Show error message
+    function showError(message) {
+      document.getElementById('status-message').innerHTML = `
+        <div class="alert alert-error">${message}</div>
+      `;
+    }
+
+    // Check for URL params
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('success') === 'true') {
+      showSuccess('Payment successful! Your subscription is now active.');
+    } else if (urlParams.get('canceled') === 'true') {
+      showError('Payment was canceled. Your subscription was not changed.');
+    }
+  </script>
+</body>
+</html>

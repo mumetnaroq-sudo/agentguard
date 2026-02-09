@@ -8,7 +8,7 @@ describe('Scanner', () => {
   let scanner;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentguard-test-'));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentguard-scan-'));
     scanner = new Scanner();
   });
 
@@ -31,8 +31,8 @@ describe('Scanner', () => {
   });
 
   test('should detect hardcoded secrets', async () => {
-    fs.writeFileSync(path.join(tempDir, 'config.js'), `
-      const apiKey = 'AKIAIOSFODNN7EXAMPLE';
+    fs.writeFileSync(path.join(tempDir, 'app.js'), `
+      const apiKey = 'AKIAIOSFODNN7EXAMPLE1234';
       const password = 'supersecret123';
     `);
     const results = await scanner.scan(tempDir);
