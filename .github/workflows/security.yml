@@ -24,7 +24,7 @@ jobs:
         node-version: '20'
         
     - name: Run AgentGuard Scan
-      uses: mumetnaroq/agentguard@v1
+      uses: mumetnaroq-sudo/agentguard@v1
       with:
         path: './'
         fail-on-critical: true
