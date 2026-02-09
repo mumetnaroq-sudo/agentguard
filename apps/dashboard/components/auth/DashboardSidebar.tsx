@@ -11,6 +11,7 @@ import {
   BarChart3,
   HelpCircle,
 } from "lucide-react";
+import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -30,6 +31,8 @@ export default function DashboardSidebar() {
 
   return (
     <aside className="w-64 bg-gray-900 border-r border-gray-800 min-h-[calc(100vh-64px)] hidden lg:block">
+      <WorkspaceSwitcher currentUserId="" />
+      
       <nav className="p-4 space-y-1">
         {navigation.map((item) => {
           const isActive = pathname === item.href;
