@@ -1,0 +1,90 @@
+# AgentGuard Integration for OpenClaw
+# Pre-LLM prompt filtering configuration
+
+monitoring:
+  # Agents to monitor
+  agents:
+    - noah
+    - moses
+    - judas
+    - ezekiel
+    - solomon
+  
+  # Check interval in seconds
+  interval_seconds: 30
+  
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  log_level: INFO
+
+# Pre-LLM Prompt Filtering (CRITICAL - Prevents jailbreaks)
+prompt_filtering:
+  enabled: true
+  
+  # Auto-block these severities before LLM API call
+  auto_block_severities:
+    - CRITICAL
+  
+  # Auto-sanitize these severities (remove injection, send cleaned)
+  auto_sanitize_severities:
+    - HIGH
+  
+  # Flag but allow these (log for review)
+  flag_severities:
+    - MEDIUM
+    - LOW
+  
+  # Max risk score before blocking (0-100)
+  max_risk_score: 80
+  
+  # Normalize unicode to prevent homoglyph attacks
+  normalize_unicode: true
+  
+  # Remove zero-width characters
+  remove_zwc: true
+  
+  # Alert cooldown (don't alert on same pattern within X seconds)
+  alert_cooldown_seconds: 300
+
+alerting:
+  # Discord webhook URL for security alerts
+  discord_webhook: "${DISCORD_WEBHOOK_EZEKIEL}"
+  
+  # Minimum severity to alert
+  min_severity: MEDIUM
+  
+  # Enable console logging
+  enable_console_alerts: true
+  
+  # Enable database logging
+  enable_database_alerts: true
+
+# Asset protection
+assets:
+  # Protected configuration files
+  protected_paths:
+    - ~/.openclaw/.env
+    - ~/.openclaw/gateway.yaml
+    - ~/.openclaw/workspace/agents/*/SOUL.md
+    - ~/.openclaw/workspace/agents/*/IDENTITY.md
+    - ~/.openclaw/workspace/skills/*.md
+  
+  # Skills directory to scan
+  skills_dir: ~/.openclaw/workspace/skills
+
+# Database
+database:
+  path: ~/projects/agentguard/agentguard.db
+  backup_interval_hours: 6
+
+# Cross-layer correlation with SCT monitoring
+correlation:
+  enabled: true
+  
+  # Link to Judas's SCT database
+  sct_database_path: ~/projects/intelligence-db/intelligence.db
+  
+  # Time window for correlation (hours)
+  correlation_window_hours: 24
+  
+  # Alert on correlation findings
+  alert_on_correlation: true
