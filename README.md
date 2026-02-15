@@ -1,10 +1,13 @@
-# AgentGuard 🛡️
+# AgentGuard 🛡️ v2.0
 
-Security monitoring and threat detection for AI agent ecosystems.
+> **Complete rewrite** — Python-based security monitoring for AI agent ecosystems.
+>
+> **Previous version**: See [main branch](https://github.com/mumetnaroq-sudo/agentguard/tree/main) for v1 (npm/YARA-based scanner)
 
 [![Status](https://img.shields.io/badge/status-operational-green)]()
 [![Python](https://img.shields.io/badge/python-3.9+-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
+[![Version](https://img.shields.io/badge/version-2.0.0-blue)]()
 
 ## Overview
 
