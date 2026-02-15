@@ -27,12 +27,16 @@ from alert_manager import AlertManager, Severity, Category
 # Initialize filter (lazy load on first use)
 _filter_instance = None
 _alert_manager = None
+_redteam_mode = os.getenv('AGENTGUARD_MODE', 'production').lower() == 'redteam'
 
 def _get_filter():
     """Lazy initialization of prompt filter"""
     global _filter_instance
     if _filter_instance is None:
-        config_path = Path("~/.openclaw/agentguard-config.yaml").expanduser()
+        if _redteam_mode:
+            config_path = Path("~/.openclaw/agentguard-redteam-config.yaml").expanduser()
+        else:
+            config_path = Path("~/.openclaw/agentguard-config.yaml").expanduser()
         _filter_instance = PromptFilter.from_config(config_path)
     return _filter_instance
 
@@ -149,6 +153,42 @@ def guard_prompt(prompt: str, agent_id: str = "unknown") -> str:
 class PromptBlockedException(Exception):
     """Exception raised when a prompt is blocked by AgentGuard"""
     pass
+
+def monitor_prompt(prompt: str, agent_id: str = "unknown") -> dict:
+    """
+    RED TEAM MODE: Monitor prompt for injection attempts but NEVER block.
+    
+    Use this for:
+    - Sandboxed red-teaming
+    - Testing attack vectors
+    - Collecting intelligence on injection techniques
+    
+    Returns:
+        dict: Full analysis including:
+        - risk_score
+        - matched_signatures
+        - would_have_blocked (bool)
+        - sanitized_version (if applicable)
+    """
+    import os
+    os.environ['AGENTGUARD_MODE'] = 'redteam'
+    
+    filter_instance = _get_filter()
+    context = {'mode': 'redteam', 'sandboxed': True}
+    
+    result = filter_instance.scan_prompt(prompt, agent_id, context)
+    
+    # In redteam mode, we log but always return the original
+    return {
+        'original_prompt': prompt,
+        'risk_score': result.risk_score,
+        'matched_signatures': [m.signature_id for m in result.matches],
+        'would_have_blocked': result.action == FilterAction.BLOCK,
+        'would_have_sanitized': result.action == FilterAction.SANITIZE,
+        'sanitized_version': result.sanitized_prompt if result.sanitized_prompt else None,
+        'action_taken': 'MONITORED (redteam mode - not blocked)',
+        'alert_logged': True
+    }
 
 # Example/test
 if __name__ == "__main__":
