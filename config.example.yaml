@@ -1,0 +1,67 @@
+# AgentGuard Configuration Example
+# Copy this file to config.yaml and customize for your environment
+
+monitoring:
+  # Agents to monitor
+  agents:
+    - agent1
+    - agent2
+    - agent3
+  
+  # Check interval in seconds
+  interval_seconds: 30
+  
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  log_level: INFO
+
+alerting:
+  # Discord webhook URL for alerts (optional)
+  discord_webhook: ""
+  
+  # Minimum severity to alert: LOW, MEDIUM, HIGH, CRITICAL
+  min_severity: MEDIUM
+  
+  # Enable database logging
+  log_to_database: true
+
+assets:
+  # Directory containing agent skills
+  skills_dir: "~/.agentguard/skills"
+  
+  # Protected files to monitor for integrity
+  protected_paths:
+    - "~/.agentguard/.env"
+    - "~/.agentguard/config.yaml"
+  
+  # Agent configuration files
+  agent_configs:
+    - "SOUL.md"
+    - "IDENTITY.md"
+    - "AGENTS.md"
+
+database:
+  # SQLite database path
+  path: "~/projects/agentguard/agentguard.db"
+  
+  # Backup interval in hours
+  backup_interval_hours: 6
+
+# Threat detection settings
+threat_detection:
+  # Maximum file size to scan (MB)
+  max_file_size_mb: 5
+  
+  # File extensions to scan
+  extensions:
+    - ".py"
+    - ".js"
+    - ".ts"
+    - ".json"
+  
+  # Directories to exclude
+  exclude_patterns:
+    - "node_modules/"
+    - ".git/"
+    - "__pycache__/"
+    - "test/"
+    - "tests/"

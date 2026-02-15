@@ -1,0 +1,40 @@
+# AgentGuard Internal Testing Configuration
+# Test environment for dogfooding AgentGuard before product launch
+
+[monitoring]
+agents = ["noah", "moses", "judas", "ezekiel", "solomon"]
+log_level = "DEBUG"
+retention_days = 7
+alert_threshold = "MEDIUM"
+
+[assets]
+skills_dir = "~/.openclaw/skills"
+agents_dir = "~/.openclaw/workspace/agents"
+config_files = ["SOUL.md", "IDENTITY.md", "AGENTS.md", "BOOTSTRAP.md"]
+protected_paths = [
+    "~/.openclaw/.env",
+    "~/.openclaw/config.yaml",
+    "~/.openclaw/gateway.yaml"
+]
+
+[components]
+behavior_monitoring = true
+skill_verification = true
+communication_scanning = true
+integrity_checks = true
+
+[test_scenarios]
+enabled = true
+auto_run = false
+report_format = "markdown"
+
+[alerts]
+discord_webhook = ""  # To be configured
+email_notifications = false
+slack_webhook = ""
+alert_on_high = true
+alert_on_critical = true
+
+[database]
+path = "~/projects/agentguard/testing/data/agentguard.db"
+backup_interval_hours = 6

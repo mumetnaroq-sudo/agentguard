@@ -1,0 +1,16 @@
+# Core dependencies
+requests>=2.31.0
+pyyaml>=6.0.1
+
+# Database
+sqlite3  # Built-in
+
+# Optional for enhanced features
+python-dotenv>=1.0.0
+discord-webhook>=1.2.0
+
+# Development dependencies (optional)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.7.0
+flake8>=6.1.0
