@@ -20,6 +20,7 @@ from alert_manager import AlertManager, Severity, Category
 from behavior_monitor import BehaviorMonitor
 from skill_scanner import SkillScanner
 from integrity_checker import IntegrityChecker
+from prompt_filter import PromptFilter, FilterAction
 
 
 class AgentGuardEngine:
@@ -39,6 +40,9 @@ class AgentGuardEngine:
         self.behavior_monitor = BehaviorMonitor(self.db_path, self.config.get('behavior', {}))
         self.skill_scanner = SkillScanner(self.db_path, self.config.get('skill_scanning', {}))
         self.integrity_checker = IntegrityChecker(self.db_path, self.config.get('integrity', {}))
+        self.prompt_filter = PromptFilter(
+            config=self.config.get('prompt_filtering', {})
+        )
         
         self.running = False
         self.cycle_count = 0
@@ -118,6 +122,89 @@ class AgentGuardEngine:
                         skills.append(str(path))
         
         return list(set(skills))  # Remove duplicates
+    
+    def filter_prompt(self, prompt: str, agent_id: str, 
+                      context: Optional[Dict] = None) -> Dict:
+        """
+        Pre-LLM prompt filtering for injection/jailbreak detection.
+        
+        This should be called BEFORE sending any prompt to the LLM API.
+        
+        Args:
+            prompt: The prompt text to filter
+            agent_id: Identifier for the agent
+            context: Optional context (skill_id, conversation_id, source, etc.)
+            
+        Returns:
+            Dict with:
+                - allowed: bool - whether to proceed
+                - prompt: str - the (possibly sanitized) prompt to use
+                - blocked: bool - True if prompt was blocked
+                - alert: Optional[Dict] - alert data if blocked/flagged
+        """
+        context = context or {}
+        
+        # Check if prompt filtering is enabled
+        if not self.config.get('monitoring', {}).get('enable_prompt_filtering', True):
+            return {
+                'allowed': True,
+                'prompt': prompt,
+                'blocked': False,
+                'alert': None
+            }
+        
+        # Scan the prompt
+        filter_result = self.prompt_filter.scan_prompt(prompt, agent_id, context)
+        
+        result = {
+            'allowed': filter_result.action != FilterAction.BLOCK,
+            'prompt': filter_result.sanitized_prompt or prompt,
+            'blocked': filter_result.is_blocked,
+            'risk_score': filter_result.risk_score,
+            'matches': [m.signature_id for m in filter_result.matches],
+            'alert': None
+        }
+        
+        # Create alert for blocked prompts
+        if filter_result.is_blocked:
+            matched = filter_result.matches[0] if filter_result.matches else None
+            self.alert_manager.create_alert(
+                severity=Severity.CRITICAL if filter_result.risk_score >= 70 else Severity.HIGH,
+                category=Category.PROMPT_INJECTION,
+                agent_id=agent_id,
+                description=f"Blocked prompt injection attempt: {matched.signature_name if matched else 'Unknown'} "
+                           f"(Risk Score: {filter_result.risk_score})",
+                evidence={
+                    'matched_signatures': [m.signature_id for m in filter_result.matches],
+                    'signature_names': [m.signature_name for m in filter_result.matches],
+                    'categories': list(set(m.category for m in filter_result.matches)),
+                    'risk_score': filter_result.risk_score,
+                    'prompt_excerpt': prompt[:200] + '...' if len(prompt) > 200 else prompt,
+                    'prompt_hash': __import__('hashlib').sha256(prompt.encode()).hexdigest()[:16],
+                    'context': context,
+                    'processing_time_ms': filter_result.processing_time_ms
+                }
+            )
+            
+            result['alert'] = {
+                'severity': 'CRITICAL' if filter_result.risk_score >= 70 else 'HIGH',
+                'matched_signature': matched.signature_id if matched else None,
+                'action_taken': 'BLOCKED'
+            }
+            
+            self.logger.critical(
+                f"PROMPT_BLOCKED: Agent={agent_id}, Risk={filter_result.risk_score}, "
+                f"Signatures={[m.signature_id for m in filter_result.matches]}"
+            )
+        
+        # Log high-risk but not blocked (sanitized/flagged)
+        elif filter_result.risk_score >= 30:
+            self.logger.warning(
+                f"PROMPT_FLAGGED: Agent={agent_id}, Risk={filter_result.risk_score}, "
+                f"Action={filter_result.action.value}"
+            )
+        
+        return result
     
     def check_agent(self, agent_id: str):
         """Run all security checks for a single agent"""
